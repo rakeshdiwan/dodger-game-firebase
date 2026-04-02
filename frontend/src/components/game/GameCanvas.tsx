@@ -21,11 +21,12 @@ interface GameCanvasProps {
 
 export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [status, setStatus] = useState<GameStatus>('idle');
+  const [status, setStatus] = useState<GameStatus>('countdown');
   const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(5);
   const [hitFlash, setHitFlash] = useState(false);
+  const [speedDisplay, setSpeedDisplay] = useState(1);
 
   const obstaclesRef = useRef<Obstacle[]>([]);
   const playerRef = useRef({ x: 180, y: 500, radius: 18 });
@@ -35,8 +36,14 @@ export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
   const lastFrameRef = useRef<number>(0);
   const speedMultiplierRef = useRef<number>(1);
   const dprRef = useRef<number>(1);
+  const scoreRef = useRef<number>(0);
+  const onGameEndRef = useRef(onGameEnd);
 
   const canvasSize = useMemo(() => ({ width: 360, height: 560 }), []);
+
+  useEffect(() => {
+    onGameEndRef.current = onGameEnd;
+  }, [onGameEnd]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -58,8 +65,6 @@ export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
   }, [canvasSize]);
 
   useEffect(() => {
-    setStatus('countdown');
-    setCountdown(3);
     const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -90,6 +95,7 @@ export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
       lastFrameRef.current = timestamp;
 
       speedMultiplierRef.current += delta * 0.04;
+      setSpeedDisplay(speedMultiplierRef.current);
 
       if (timestamp - lastSpawnRef.current > 550) {
         lastSpawnRef.current = timestamp;
@@ -117,7 +123,14 @@ export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
           onHit();
           setHitFlash(true);
           setTimeout(() => setHitFlash(false), 130);
-          setLives((prev) => prev - 1);
+          setLives((prev) => {
+            const next = prev - 1;
+            if (next <= 0) {
+              setStatus('gameover');
+              onGameEndRef.current(scoreRef.current, (performance.now() - startTimeRef.current) / 1000);
+            }
+            return next;
+          });
           break;
         }
       }
@@ -162,6 +175,7 @@ export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
 
       const nextScore = Math.floor((timestamp - startTimeRef.current) / 100);
       setScore(nextScore);
+      scoreRef.current = nextScore;
 
       animationRef.current = requestAnimationFrame(loop);
     };
@@ -171,13 +185,6 @@ export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
   }, [status, canvasSize, onHit]);
-
-  useEffect(() => {
-    if (lives <= 0 && status !== 'gameover') {
-      setStatus('gameover');
-      onGameEnd(score, (performance.now() - startTimeRef.current) / 1000);
-    }
-  }, [lives, status, score, onGameEnd]);
 
   const onPointerMove = (evt: React.PointerEvent<HTMLCanvasElement>) => {
     if (status !== 'playing') return;
@@ -195,7 +202,7 @@ export const GameCanvas = ({ onGameEnd, onHit }: GameCanvasProps) => {
       <div className="mb-3 grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
         <div className="stat-chip">Score {score}</div>
         <div className="stat-chip">Lives {lives}</div>
-        <div className="stat-chip">Speed {speedMultiplierRef.current.toFixed(2)}x</div>
+        <div className="stat-chip">Speed {speedDisplay.toFixed(2)}x</div>
       </div>
 
       {hitFlash && (
