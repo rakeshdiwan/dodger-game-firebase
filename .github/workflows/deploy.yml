@@ -1,0 +1,88 @@
+name: Deploy to Firebase
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build_and_deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Use Node.js 18 as requested
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      # Cache node_modules directories to speed up repeated runs
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            frontend/node_modules
+            backend/node_modules
+          key: ${{ runner.os }}-modules-${{ hashFiles('frontend/package-lock.json', 'backend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-modules-
+
+      # Install frontend dependencies
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # Install backend dependencies (Cloud Functions source)
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      # Lint frontend if lint script exists
+      - name: Lint frontend
+        run: npm run lint --if-present
+        working-directory: frontend
+
+      # Lint backend if lint script exists
+      - name: Lint backend
+        run: npm run lint --if-present
+        working-directory: backend
+
+      # Run frontend tests if test script exists
+      - name: Test frontend
+        run: npm test --if-present
+        working-directory: frontend
+
+      # Run backend tests if test script exists
+      - name: Test backend
+        run: npm test --if-present
+        working-directory: backend
+
+      # Build frontend bundle for Firebase Hosting
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      # Build backend TypeScript for Firebase Functions
+      - name: Build backend
+        run: npm run build
+        working-directory: backend
+
+      # Install Firebase CLI for deployment
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      # Deploy Hosting + Functions to Firebase project
+      - name: Deploy to Firebase
+        run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
